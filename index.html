@@ -49,7 +49,7 @@
 
     /* Filters */
     .filters{display:grid; grid-template-columns:repeat(6,1fr); gap:10px;}
-    @media (max-width:1024px){ .filters{grid-template-columns:repeat(3,1fr);} }
+    @media (max-width:1024px){ .filters{grid-template-columns:repeat(3,1,1fr);} }
     @media (max-width:640px){ .filters{grid-template-columns:1fr 1fr;} }
     label{font-size:12px; font-weight:800; opacity:.92; display:block; margin:0 0 6px;}
     .input,.select{ width:100%; height:46px; border-radius:12px; border:1px solid var(--field-br); background:var(--field-bg); color:#fff; padding:0 12px; font-size:14px; outline:none; }
@@ -125,7 +125,7 @@
 <body>
   <header class="topbar">
     <div class="logo">Швидко продай</div>
-    <div class="pill yellow" id="tabSearch">Пошук</div>
+    <div class="pill yellow" id="tabSearch">ПОШУК</div>
     <div class="pill" id="tabSell">Додати оголошення</div>
     <div class="grow"></div>
   </header>
@@ -173,9 +173,7 @@
     </section>
 
     <!-- РЕЗУЛЬТАТИ -->
-    <section class="topline">
-      <div class="grow"></div>
-    </section>
+    <section class="topline"><div class="grow"></div></section>
     <section class="grid" id="grid"></section>
     <div class="pager"><button class="btn" id="btnMore" style="display:none">Показати ще</button></div>
   </main>
@@ -236,8 +234,11 @@
 
   <script>
   const $ = s => document.querySelector(s), $$ = s => document.querySelectorAll(s);
-  const DB_KEY = "spd_listings_v2";       // база оголошень
-  const CTRL_KEY = "spd_ctrl_v2";         // службові налаштування (HOT, остання публікація, лайки користувача)
+
+  /* ==== СТАБИЛЬНЫЙ ключ БД + миграция старых ==== */
+  const DB_KEY   = "spd_listings";      // стабильный
+  const CTRL_KEY = "spd_ctrl_v3";
+  const OLD_KEYS = ["spd_listings_v1","spd_listings_v2","auto369_listings_nice"];
 
   /* ===== Україна: області → міста ===== */
   const UA_REGIONS = {
@@ -283,7 +284,7 @@
   const CONDS=["Нове","Вживане","Після ремонту"];
   const SELLERS=["Приватний","Бізнес"];
 
-  /* ===== Пулы реальных изображений (Wikimedia/иконки/фото) ===== */
+  /* ===== Пулы реальных изображений (безопасные) ===== */
   const IMG = {
     car:[
       "https://upload.wikimedia.org/wikipedia/commons/8/8e/2017_Skoda_Octavia_SE_TDi_1.6_Front.jpg",
@@ -316,18 +317,12 @@
     ],
     tv:[ "https://upload.wikimedia.org/wikipedia/commons/6/60/Modern_TV.jpg" ],
     washer:[ "https://upload.wikimedia.org/wikipedia/commons/0/0c/Washing_Machine_Icon.png" ],
-    sofa:[ "https://upload.wikimedia.org/wikipedia/commons/2/2c/Sofa_interior.jpg",
-           "https://upload.wikimedia.org/wikipedia/commons/3/31/Sofa_icon.png" ],
-    bike:[ "https://upload.wikimedia.org/wikipedia/commons/7/7b/Road_bicycle.jpg",
-           "https://upload.wikimedia.org/wikipedia/commons/c/c3/Mountain_bike_in_forest.jpg" ],
-    dog:[ "https://upload.wikimedia.org/wikipedia/commons/6/6e/Golde33443.jpg",
-          "https://upload.wikimedia.org/wikipedia/commons/1/10/Labrador_Retriever_portrait.jpg" ],
-    cat:[ "https://upload.wikimedia.org/wikipedia/commons/3/3a/Cat03.jpg",
-          "https://upload.wikimedia.org/wikipedia/commons/0/0b/Cat_poster_1.jpg" ],
-    flat:[ "https://upload.wikimedia.org/wikipedia/commons/9/9a/Apartment_interior.png",
-           "https://upload.wikimedia.org/wikipedia/commons/e/ef/Modern_living_room.jpg" ],
-    tools:[ "https://upload.wikimedia.org/wikipedia/commons/2/2f/Hand_tools.jpg",
-            "https://upload.wikimedia.org/wikipedia/commons/1/18/Power_drill.jpg" ],
+    sofa:[ "https://upload.wikimedia.org/wikipedia/commons/2/2c/Sofa_interior.jpg","https://upload.wikimedia.org/wikipedia/commons/3/31/Sofa_icon.png" ],
+    bike:[ "https://upload.wikimedia.org/wikipedia/commons/7/7b/Road_bicycle.jpg","https://upload.wikimedia.org/wikipedia/commons/c/c3/Mountain_bike_in_forest.jpg" ],
+    dog:[ "https://upload.wikimedia.org/wikipedia/commons/6/6e/Golde33443.jpg","https://upload.wikimedia.org/wikipedia/commons/1/10/Labrador_Retriever_portrait.jpg" ],
+    cat:[ "https://upload.wikimedia.org/wikipedia/commons/3/3a/Cat03.jpg","https://upload.wikimedia.org/wikipedia/commons/0/0b/Cat_poster_1.jpg" ],
+    flat:[ "https://upload.wikimedia.org/wikipedia/commons/9/9a/Apartment_interior.png","https://upload.wikimedia.org/wikipedia/commons/e/ef/Modern_living_room.jpg" ],
+    tools:[ "https://upload.wikimedia.org/wikipedia/commons/2/2f/Hand_tools.jpg","https://upload.wikimedia.org/wikipedia/commons/1/18/Power_drill.jpg" ],
     decor:[ "https://upload.wikimedia.org/wikipedia/commons/b/b1/Decorative_lights.jpg" ],
     service:[ "https://upload.wikimedia.org/wikipedia/commons/2/2a/Construction_worker_illustration.png" ],
     job:[ "https://upload.wikimedia.org/wikipedia/commons/2/2d/Job_search.png" ],
@@ -345,13 +340,12 @@
   const uid=()=>Math.random().toString(16).slice(2)+Date.now().toString(16);
   const rand=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
   const pick=a=>a[Math.floor(Math.random()*a.length)];
-  function fmtUA(date){ return new Date(date).toLocaleDateString('uk-UA'); }
+  const fmtUA = ts => new Date(ts).toLocaleDateString('uk-UA');
 
   function createImg(src, alt, fallback){
     const img=document.createElement("img"); img.loading="lazy"; img.alt=alt; img.referrerPolicy="no-referrer";
     img.src = src || fallback; img.onerror=()=>{ img.onerror=null; img.src=fallback; }; return img;
   }
-  /* Fallback PNG */
   function itemPNG(title, seed=0){
     const c=document.createElement('canvas'); c.width=800; c.height=500; const g=c.getContext('2d');
     const palettes=[["#0e2a58","#163b7a","#0b1d3b"],["#531a4e","#7b2c76","#1b0f2f"],["#0b3a2e","#147a60","#06241d"],["#6b1f1f","#a23333","#240909"]];
@@ -363,7 +357,7 @@
     return c.toDataURL('image/png');
   }
 
-  /* ===== Пошук/фільтри ===== */
+  /* ===== Фильтры ===== */
   const fltCity=$("#fltCity"), fltCat=$("#fltCat"), fltSub=$("#fltSubcat"), fltCond=$("#fltCond"),
         fltSeller=$("#fltSeller"), fltPriceMin=$("#fltPriceMin"), fltPriceMax=$("#fltPriceMax"),
         fltQuery=$("#fltQuery"), fltRecent=$("#fltRecent");
@@ -373,13 +367,13 @@
   }
   function buildCityDatalist(){
     const dl=$("#cityList"); const items=[];
-    Object.keys(UA_REGIONS).forEach(r=>{
+    for(const r of Object.keys(UA_REGIONS)){
       items.push(`<option value="${r}">`);
-      UA_REGIONS[r].forEach(c=>{
+      for(const c of UA_REGIONS[r]){
         items.push(`<option value="${r} • ${c}">`);
         items.push(`<option value="${c}">`);
-      });
-    });
+      }
+    }
     dl.innerHTML=items.join('');
   }
   buildCityDatalist();
@@ -389,7 +383,7 @@
   fillSelect(fltCond, CONDS);
   fillSelect(fltSeller, SELLERS);
 
-  /* ===== Nice select (desktop) ===== */
+  /* ===== Nice Select (desktop) ===== */
   let activeList=null, activeWrap=null;
   function closeAll(e){
     if(activeList){
@@ -417,36 +411,8 @@
   }
   $$('.select').forEach(enhanceSelect);
 
-  /* ===== Генератор данных (1000 объявлений с фото) ===== */
-  const FIRSTNAMES=["Олег","Ірина","Сергій","Анна","Віктор","Максим","Марія","Юрій","Олексій","Наталія","Дмитро","Олена","Микита","Андрій","Світлана","Руслан","Катерина","Владислав"];
-  const LASTNAMES=["Шевченко","Коваленко","Бондаренко","Ткаченко","Кравченко","Мельник","Ковальчук","Петренко","Поліщук","Гриценко","Савченко","Гнатюк","Яковенко","Білоус","Лисенко"];
-  const OPERATORS=["50","63","66","67","68","73","93","95","96","97","98","99"];
-
-  function genPhone(){ const op=pick(OPERATORS); return `+380 (${op}) ${rand(100,999)}-${rand(10,99)}-${rand(10,99)}`; }
-  function imgBy(cat, sub){
-    if(cat==="Транспорт" && sub==="Легкові авто") return pick(IMG.car);
-    if(cat==="Транспорт" && sub==="Мото") return pick(IMG.moto);
-    if(cat==="Електроніка" && sub==="Смартфони") return pick(IMG.phone);
-    if(cat==="Електроніка" && (sub||"").includes("Ноут")) return pick(IMG.laptop);
-    if(cat==="Електроніка" && (sub||"").includes("TV")) return pick(IMG.tv);
-    if(cat==="Електроніка" && (sub||"").includes("Техніка")) return pick([pick(IMG.washer),pick(IMG.tv),pick(IMG.laptop)]);
-    if(cat==="Для дому та саду" && sub==="Меблі") return pick(IMG.sofa);
-    if(cat==="Для дому та саду") return pick([pick(IMG.tools),pick(IMG.decor)]);
-    if(cat==="Спорт/Хобі") return pick(IMG.bike);
-    if(cat==="Тварини" && sub==="Собаки") return pick(IMG.dog);
-    if(cat==="Тварини" && sub==="Коти") return pick(IMG.cat);
-    if(cat==="Нерухомість") return pick(IMG.flat);
-    if(cat==="Послуги") return pick(IMG.service);
-    if(cat==="Робота") return pick(IMG.job);
-    if(cat==="Мода" && sub==="Одяг") return pick(IMG.clothes);
-    if(cat==="Мода" && sub==="Взуття") return pick(IMG.shoes);
-    if(cat==="Діти" && sub==="Візочки") return pick(IMG.stroller);
-    if(cat==="Діти" && sub==="Іграшки") return pick(IMG.toys);
-    return pick([pick(IMG.phone),pick(IMG.tools),pick(IMG.sofa),pick(IMG.service)]);
-  }
-
-  // Реалистичные диапазоны цен (UAH)
-  function realisticPrice(cat, sub, title=""){
+  /* ===== Реалистичные цены ===== */
+  function realisticPrice(cat, sub){
     if(cat==="Транспорт"){
       if(sub==="Легкові авто") return rand(180000,1500000);
       if(sub==="Мото") return rand(30000,300000);
@@ -498,13 +464,38 @@
     return rand(500,20000);
   }
 
-  function seedDB(){
-    const out=[]; const now=Date.now();
+  /* ===== Генерация + миграция ===== */
+  const FIRSTNAMES=["Олег","Ірина","Сергій","Анна","Віктор","Максим","Марія","Юрій","Олексій","Наталія","Дмитро","Олена","Микита","Андрій","Світлана","Руслан","Катерина","Владислав"];
+  const LASTNAMES=["Шевченко","Коваленко","Бондаренко","Ткаченко","Кравченко","Мельник","Ковальчук","Петренко","Поліщук","Гриценко","Савченко","Гнатюк","Яковенко","Білоус","Лисенко"];
+  const OPERATORS=["50","63","66","67","68","73","93","95","96","97","98","99"];
+
+  const PHONE = ()=> `+380 (${pick(OPERATORS)}) ${rand(100,999)}-${rand(10,99)}-${rand(10,99)}`;
+
+  function imgBy(cat, sub){
+    if(cat==="Транспорт" && sub==="Легкові авто") return pick(IMG.car);
+    if(cat==="Транспорт" && sub==="Мото") return pick(IMG.moto);
+    if(cat==="Електроніка" && sub==="Смартфони") return pick(IMG.phone);
+    if(cat==="Електроніка" && (sub||"").includes("Ноут")) return pick(IMG.laptop);
+    if(cat==="Електроніка" && (sub||"").includes("TV")) return pick(IMG.tv);
+    if(cat==="Електроніка" && (sub||"").includes("Техніка")) return pick([pick(IMG.washer),pick(IMG.tv),pick(IMG.laptop)]);
+    if(cat==="Для дому та саду" && sub==="Меблі") return pick(IMG.sofa);
+    if(cat==="Для дому та саду") return pick([pick(IMG.tools),pick(IMG.decor)]);
+    if(cat==="Спорт/Хобі") return pick(IMG.bike);
+    if(cat==="Тварини" && sub==="Собаки") return pick(IMG.dog);
+    if(cat==="Тварини" && sub==="Коти") return pick(IMG.cat);
+    if(cat==="Нерухомість") return pick(IMG.flat);
+    if(cat==="Послуги") return pick(IMG.service);
+    if(cat==="Робота") return pick(IMG.job);
+    if(cat==="Мода" && sub==="Одяг") return pick(IMG.clothes);
+    if(cat==="Мода" && sub==="Взуття") return pick(IMG.shoes);
+    if(cat==="Діти" && sub==="Візочки") return pick(IMG.stroller);
+    if(cat==="Діти" && sub==="Іграшки") return pick(IMG.toys);
+    return pick([pick(IMG.phone),pick(IMG.tools),pick(IMG.sofa),pick(IMG.service)]);
+  }
+
+  function genTitle(cat, sub, year){
     const TEMPL = {
-      "Транспорт:Легкові авто":[
-        "Skoda Octavia 1.6 TDI, {y}р, чесний пробіг","Toyota Camry 2.5, {y}, один власник",
-        "BMW 320d {y}, сервісна історія","Audi A4 2.0 TDI {y}, стан ідеал","Volkswagen Golf 1.6 {y}, економний"
-      ],
+      "Транспорт:Легкові авто":[ "Skoda Octavia 1.6 TDI, {y}р","Toyota Camry 2.5, {y}","BMW 320d {y}","Audi A4 2.0 TDI {y}","Volkswagen Golf 1.6 {y}","Kia Sportage {y}","Hyundai Tucson {y}" ],
       "Транспорт:Мото":[ "{b} {m} {y}, після ТО","{b} {m} {y}, гаражне зберігання" ],
       "Електроніка:Смартфони":[ "iPhone 13 128GB, 9/10","Samsung S21 256GB, офіційний","Pixel 6 128GB, з чеком" ],
       "Електроніка:Ноутбуки/ПК":[ "MacBook Pro 16 {y}, i9/16/512","Lenovo ThinkPad T14, i5/16/512","Asus ROG, RTX" ],
@@ -524,60 +515,108 @@
       "Діти:Іграшки":[ "Набір іграшок, стан новий" ]
     };
     const MOTO = ["Honda CB500F","Yamaha R6","Kawasaki Z650","Suzuki SV650"];
+    const key=`${cat}:${sub}`, tmpl = (TEMPL[key] && pick(TEMPL[key])) || `${sub} — пропозиція`;
+    if(key==="Транспорт:Мото"){
+      const mm = pick(MOTO).split(" ");
+      return tmpl.replace("{b}", mm[0]).replace("{m}", mm.slice(1).join(" ")).replace("{y}", year);
+    }
+    if(key==="Транспорт:Легкові авто") return tmpl.replace("{y}", year);
+    if(key==="Нерухомість:Квартири") return tmpl.replace("{m}", rand(25,120));
+    return tmpl.replace("{y}", year);
+  }
 
-    let i=0;
-    while(out.length<1000){
-      const rc = CITIES[i % CITIES.length];
+  function migrateOld(){
+    let migrated=[];
+    for(const k of OLD_KEYS){
+      try{
+        const raw = localStorage.getItem(k);
+        if(!raw) continue;
+        const arr = JSON.parse(raw||"[]");
+        if(!Array.isArray(arr) || !arr.length) continue;
+        // две возможные схемы: наша старая (уже ок) и авто-демо (brand/model/..)
+        for(const it of arr){
+          if(it.cat && it.sub){ // наша старая
+            if(!it.images || !it.images.length) it.images=[imgBy(it.cat,it.sub)];
+            migrated.push(it);
+          } else if(it.brand && it.model){ // авто-демо → преобразуем
+            const city = it.city || pick(CITIES).city;
+            const region = it.region || (REGIONS.find(r=>UA_REGIONS[r].includes(city))||"");
+            const title = `${it.brand} ${it.model} ${it.year||""}`.trim();
+            const priceUAH = Math.round((it.price||5000) * 40); // ~конверсия
+            migrated.push({
+              id: uid(), region, city,
+              cat:"Транспорт", sub:"Легкові авто",
+              title, price: priceUAH, currency:"₴",
+              cond:"Вживане", seller:"Приватний",
+              created: it.created || Date.now()-rand(0,60*86400*1000),
+              views: it.views||rand(100,5000), likes: rand(0,60),
+              desc: it.desc || "Гарний стан, чесний пробіг. Деталі по телефону.",
+              images: (it.images&&it.images.length)? it.images : [pick(IMG.car)],
+              contact:{name:(it.seller?.name)||`${pick(FIRSTNAMES)} ${pick(LASTNAMES)}`, phone:(it.seller?.phone)||PHONE()}
+            });
+          }
+        }
+      }catch(e){}
+    }
+    return migrated;
+  }
+
+  function seed(count=1500){
+    const out=[]; const now=Date.now();
+    while(out.length<count){
+      const rc = pick(CITIES);
       const cat = pick(Object.keys(CATS));
       const sub = pick(CATS[cat]);
       const cond = pick(CONDS);
       const seller = pick(SELLERS);
       const price = realisticPrice(cat, sub);
-      const year = rand(2005, 2025);
-      const sM = rand(25, 120);
-      let title;
-      const key = `${cat}:${sub}`;
-      const tmpl = TEMPL[key] && pick(TEMPL[key]);
-      if(cat==="Транспорт" && sub==="Мото"){
-        const mm = pick(MOTO).split(" ");
-        title = (tmpl||"{b} {m} {y}").replace("{b}", mm[0]).replace("{m}", mm.slice(1).join(" ")).replace("{y}", year);
-      } else if(cat==="Транспорт" && sub==="Легкові авто"){
-        title = (tmpl||"Авто {y}").replace("{y}", year);
-      } else if(key.includes("Нерухомість:Квартири")){
-        title = (tmpl||"Квартира, {m} м²").replace("{m}", sM);
-      } else {
-        title = (tmpl||`${sub} — пропозиція`);
-      }
+      const year = rand(2005,2025);
+      const title = genTitle(cat, sub, year);
       const created = now - rand(0, 60*86400*1000);
       const views = rand(80, 6000);
       const likes = rand(0, Math.max(10, Math.round(views/25)));
-      const img = imgBy(cat, sub);
-      const name = `${pick(FIRSTNAMES)} ${pick(LASTNAMES)}`;
-      const desc = pick([
-        "Стан відмінний, детальні фото додаю. Телефонуйте/пишіть у зручний час.",
-        "Без значних дефектів. Можлива відправка Новою поштою або самовивіз.",
-        "Причина продажу — оновлення/переїзд. Готовий до перевірок.",
-        "Оголошення реалістичне для демо. Усе працює як слід."
-      ]);
+      const image = imgBy(cat, sub);
       out.push({
-        id: uid(),
-        region: rc.region,
-        city: rc.city,
-        cat, sub,
-        title,
-        price, currency:"₴",
-        cond, seller,
+        id: uid(), region: rc.region, city: rc.city,
+        cat, sub, title, price, currency:"₴", cond, seller,
         created, views, likes,
-        desc,
-        images: [img], // всегда фото по теме
-        contact: {name, phone: genPhone()}
+        desc: pick([
+          "Стан відмінний, детальні фото додаю. Телефонуйте/пишіть у зручний час.",
+          "Без значних дефектів. Можлива відправка Новою поштою або самовивіз.",
+          "Причина продажу — оновлення/переїзд. Готовий до перевірок.",
+          "Оголошення реалістичне для демо. Усе працює як слід."
+        ]),
+        images:[image],
+        contact:{name:`${pick(FIRSTNAMES)} ${pick(LASTNAMES)}`, phone: PHONE()}
       });
-      i++;
     }
-    localStorage.setItem(DB_KEY, JSON.stringify(out));
+    return out;
   }
 
-  /* ===== HOT (ТОП-10 на 7 днів) ===== */
+  function ensureImages(db){
+    for(const it of db){
+      if(!it.images || !it.images.length){
+        it.images = [imgBy(it.cat,it.sub)];
+      }
+    }
+    return db;
+  }
+
+  function initDB(){
+    let db = getDB();
+    if(!db.length){
+      // миграция
+      const mig = migrateOld();
+      if(mig.length) db = mig;
+    }
+    // дозаполнить до 1500
+    if(db.length < 1500){
+      db = db.concat(seed(1500 - db.length));
+    }
+    setDB(ensureImages(db));
+  }
+
+  /* ===== HOT ===== */
   function ensureHot(){
     const ctrl = getCtrl();
     const db = getDB();
@@ -593,12 +632,10 @@
     }
     renderHot(ctrl.hotIds, ctrl.hotUntil);
   }
-
   function renderHot(ids, untilTs){
     const grid=$("#hotGrid"); grid.innerHTML="";
     const db = getDB();
-    const until = new Date(untilTs);
-    $("#hotUntil").textContent = until.toLocaleDateString('uk-UA');
+    $("#hotUntil").textContent = new Date(untilTs).toLocaleDateString('uk-UA');
     const items = ids.map(id => db.find(x=>x.id===id)).filter(Boolean);
     if(items.length){
       $("#hotPanel").style.display="block";
@@ -647,7 +684,7 @@
       const im=document.createElement("img"); im.src=data; preview.appendChild(im);
     }
   });
-  function fileToDataURL(file){ return new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(file); }); }
+  const fileToDataURL = file => new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(file); });
 
   $("#sSave").onclick=()=>{
     const ctrl=getCtrl(); const now=Date.now();
@@ -658,11 +695,12 @@
     const phone=$("#sPhone").value.trim(); if(phone && !/^\+?\d[\d\s\-\(\)]{8,}$/.test(phone)) return alert("Телефон некоректний.");
     const desc=$("#sDesc").value.trim(); if(desc.length<20) return alert("Опис ≥ 20 символів.");
     const cond=$("#sCond").value, seller=$("#sSeller").value;
+    if(uploadedImages.length===0){ if(!confirm("Фото не додано. Додати авто-фото по темі?")) return; }
     const db=getDB();
     db.unshift({
       id: uid(), region: REGIONS.find(r=>UA_REGIONS[r].includes(city))||"", city,
       cat, sub, title, price, currency:"₴", cond, seller, created:now, views: rand(5,25), likes:0,
-      desc, images: uploadedImages.length? uploadedImages : [imgBy(cat, sub)], contact:{name:"Продавець", phone: phone||genPhone()}
+      desc, images: uploadedImages.length? uploadedImages : [imgBy(cat, sub)], contact:{name:"Продавець", phone: phone||PHONE()}
     });
     setDB(db); ctrl.lastPost=now; setCtrl(ctrl); alert("Оголошення опубліковано.");
     sellModal.classList.remove('active'); sellModal.setAttribute('aria-hidden','true');
@@ -677,12 +715,14 @@
   function parseCityInput(val){
     val=(val||"").trim();
     if(!val) return {region:"", city:""};
-    if(val.includes("•")){
-      const [region,city] = val.split("•").map(x=>x.trim());
-      return {region, city};
-    }
-    if(Object.keys(UA_REGIONS).includes(val)) return {region:val, city:""};
-    return {region:"", city:val};
+    // если введено "Київ, Київська • Київ" — берем правую часть
+    if(val.includes("•")){ const parts=val.split("•").map(x=>x.trim()); const region=parts[0].split(",").pop().trim(); const city=parts[1]; return {region, city}; }
+    // если это точное имя области
+    if(REGIONS.includes(val)) return {region:val, city:""};
+    // если это известный город — найдем его область
+    for(const r of REGIONS){ if(UA_REGIONS[r].includes(val)) return {region:r, city:val}; }
+    // иначе игнорируем как пустой ввод
+    return {region:"", city:""};
   }
 
   function applyFilters(){
@@ -751,14 +791,14 @@
     grid.appendChild(el);
   }
 
-  $("#btnApply").onclick=()=>{ applyFilters(); };
+  $("#btnApply").onclick=applyFilters;
   $("#btnReset").onclick=()=>{ $$("#searchPanel .select, #searchPanel .input").forEach(x=>x.value=""); fltRecent.checked=false; applyFilters(); };
-  btnMore.onclick=renderMore; sortBy.onchange=applyFilters;
+  $("#btnMore").onclick=renderMore;
+  $("#sortBy").onchange=applyFilters;
 
-  /* ===== Детальне вікно + галерея ===== */
-  let galIndex=0, galImgs=[], currentId=null;
+  /* ===== Деталі ===== */
+  let galIndex=0, galImgs=[];
   function spec(k,v){return `<div class="spec"><div class="h">${k}</div>${v}</div>`}
-
   function renderGallery(title){
     const gal=$("#dGal");
     gal.innerHTML=`<div class="big"><button class="navBtn navPrev" id="galPrev" aria-label="Попереднє">‹</button><button class="navBtn navNext" id="galNext" aria-label="Наступне">›</button></div>`;
@@ -777,7 +817,6 @@
 
   function openDetail(id){
     const db=getDB(); const idx=db.findIndex(x=>x.id===id); if(idx<0) return; const it=db[idx];
-    currentId=id;
     it.views=(it.views||0)+1; db[idx]=it; setDB(db);
     const d=$("#detail"); d.classList.add('active'); d.setAttribute('aria-hidden', 'false');
     $("#dClose").onclick=()=>{ d.classList.remove('active'); d.setAttribute('aria-hidden','true'); applyFilters(); ensureHot(); };
@@ -787,8 +826,8 @@
       <div class="pill yellow">${it.price.toLocaleString('uk-UA')} ${it.currency||"₴"}</div>
       <div class="pill">♥ ${it.likes||0}</div>
       <div class="pill" style="margin-left:auto">👁 ${it.views}</div>`;
-    const imgs=(Array.isArray(it.images)&&it.images.length)?it.images:[imgBy(it.cat,it.sub)];
-    galImgs = imgs; galIndex=0; renderGallery(it.title);
+    galImgs = (it.images&&it.images.length)?it.images:[imgBy(it.cat,it.sub)];
+    galIndex=0; renderGallery(it.title);
     $("#dSpecs").innerHTML=
       spec("Категорія", it.cat)+
       spec("Підкатегорія", it.sub)+
@@ -802,14 +841,24 @@
     $("#dSeller").innerHTML=`<div class="avatar">${initials}</div><div><div class="h">Продавець</div><div>${it.contact?.name||"Продавець"}</div><div style="opacity:.85">${it.contact?.phone||"—"}</div></div>`;
   }
 
-  /* ===== Перший старт ===== */
+  /* ===== Инициализация ===== */
   (function init(){
-    if(getDB().length===0){ seedDB(); }
+    // построить списки
+    const mapSelectData={sCity:CITIES.map(x=>x.city).sort(), sCat:Object.keys(CATS), sCond:CONDS, sSeller:SELLERS};
+    Object.keys(mapSelectData).forEach(id=>{
+      const el=$("#"+id); if(el) el.innerHTML=mapSelectData[id].map(x=>`<option value="${x}">${x}</option>`).join('');
+    });
+    const sSub=$("#sSubcat"); if(sSub){ sSub.innerHTML=(CATS[$("#sCat").value]||[]).map(x=>`<option value="${x}">${x}</option>`).join(''); }
+
+    // база
+    if(getDB().length===0){ initDB(); } else { // дополним изображениями на всякий
+      setDB(ensureImages(getDB()));
+      if(getDB().length<1500){ setDB(getDB().concat(seed(1500-getDB().length))); }
+    }
     applyFilters();
     ensureHot();
   })();
 
-  /* Вкладка "Пошук" (скролл вверх) */
   $("#tabSearch").onclick=()=>{ window.scrollTo({top:0, behavior:"smooth"}); };
   </script>
 </body>
